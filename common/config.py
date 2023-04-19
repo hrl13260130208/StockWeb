@@ -23,7 +23,7 @@ class FileConfig():
     # TRADEAPPLY_PATH= r"/root/apply"
 
     #   股票代码映射表
-    CODEMAPPING_PATH = "static/json/mapping.json"
+    # CODEMAPPING_PATH = "static/json/mapping.json"
     #   每日更新的交易详情数据的股票列表
     CODES_PATH = "static/json/codes.json"
 
@@ -219,7 +219,34 @@ class QuotaField():
     PM_DIFF = "PM_DIFF"
 
 
-class DataSetField(DailyFieldWY,QuotaField):
+class DailyFieldsTushare():
+    DATE = "trade_date"
+    CODE = "code"
+    #   收盘价
+    TCLOSE = "close"
+    #   最高价
+    HIGH = "high"
+    #   最低价
+    LOW = "low"
+    #   开盘价
+    TOPEN = "open"
+    #   前收盘价
+    LCLOSE = "pre_close"
+    #   涨跌额
+    CHG = "change"
+    #   涨跌幅
+    PCHG = "pct_chg"
+    #   成交量
+    VOTURNOVER = "vol"
+    #   成交金额
+    VATURNOVER = "amount"
+
+    # #   日线数据csv文件列名与字段对应
+    # COLUMES={'日期': DATE, '股票代码': CODE,  '收盘价': TCLOSE, '最高价':HIGH, '最低价': LOW, '开盘价': TOPEN,
+    #          '前收盘': LCLOSE, '涨跌额': CHG, '涨跌幅': PCHG, '成交量': VOTURNOVER, '成交金额': VATURNOVER}
+
+
+class DataSetField(DailyFieldsTushare,QuotaField):
 
     DAILY_DATE="DAILY_DATE"
     DALIY_MISS="DALIY_MISS"

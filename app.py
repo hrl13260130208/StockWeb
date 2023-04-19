@@ -7,22 +7,20 @@ logger = logging.getLogger("logger")
 from flask import Flask
 from flask import request
 import json
-# from config import Config, DataSetField
+
 from common.config import FileConfig, DataSetField
-# import holding_code
-from exts import db
-from mysql_table import *
+from common.mapping import CodeMapping
+
+from tables import *
 import easyocr
 import uuid
 from data.dataset import CodeDataSet
-from data.data_manager import CodeMapping
-from data.controller import Controller
-from data.executor import DownloadExecutor, UpdateExecutor
+from data.downloader import DataDownloader
 
+import datetime
 import pymysql
 from utils.email_sender import send_text
 from pymysql.cursors import DictCursor
-from apscheduler.schedulers.background import BackgroundScheduler
 
 # 打开数据库连接
 connection = pymysql.connect(host='localhost',
@@ -35,20 +33,7 @@ cds = CodeDataSet(mapping)
 
 reader = easyocr.Reader(['ch_sim', 'en'])  # 只需要运行一次就可以将模型加载到内存中
 
-
-def background_db_update():
-    c = Controller(mapping)
-    d = DownloadExecutor()
-    u = UpdateExecutor()
-
-    d.start()
-    u.start()
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(c.run, "cron", day="*", hour="22", minute="00")
-    scheduler.start()
-
-
-# background_db_update()
+downloader = DataDownloader()
 
 app = Flask(__name__, template_folder="static/html")
 # 连接数据库
@@ -61,17 +46,6 @@ app.config['SQLALCHEMY_ECHO'] = True
 db.init_app(app)
 
 label_datas = []
-
-
-@app.route('/update', methods=["get"])
-def update():
-    '''
-        更新日线即指标数据
-    :return:
-    '''
-    code = request.args['code']
-    cds.update_code(code)
-    return get_kline(code)
 
 
 @app.route('/codejosn', methods=["get"])
@@ -90,31 +64,18 @@ def code_json():
 def get_kline(code):
     start = "20191231"
     r = {}
-    r[DataSetField.DATE] = cds.get_echarts_data(code, start, DataSetField.DATE)
-    r[DataSetField.KLINE] = cds.get_echarts_data(code, start, DataSetField.KLINE)
-    r[DataSetField.MA5] = cds.get_echarts_data(code, start, DataSetField.MA5)
-    r[DataSetField.EMA30] = cds.get_echarts_data(code, start, DataSetField.EMA30)
-    r[DataSetField.EMA200] = cds.get_echarts_data(code, start, DataSetField.EMA200)
-    r[DataSetField.MA60] = cds.get_echarts_data(code, start, DataSetField.MA60)
-    r[DataSetField.MA250] = cds.get_echarts_data(code, start, DataSetField.MA250)
-    r[DataSetField.PDI] = cds.get_echarts_data(code, start, DataSetField.PDI)
-    r[DataSetField.MDI] = cds.get_echarts_data(code, start, DataSetField.MDI)
-    r[DataSetField.ADX] = cds.get_echarts_data(code, start, DataSetField.ADX)
-    r[DataSetField.ADXR] = cds.get_echarts_data(code, start, DataSetField.ADXR)
-    r[DataSetField.DIF] = cds.get_echarts_data(code, start, DataSetField.DIF)
-    r[DataSetField.DEA] = cds.get_echarts_data(code, start, DataSetField.DEA)
-    r[DataSetField.MACDHIST] = cds.get_echarts_data(code, start, DataSetField.MACDHIST)
-    r[DataSetField.RSI6] = cds.get_echarts_data(code, start, DataSetField.RSI6)
-    r[DataSetField.RSI12] = cds.get_echarts_data(code, start, DataSetField.RSI12)
-    r[DataSetField.RSI24] = cds.get_echarts_data(code, start, DataSetField.RSI24)
-    r[DataSetField.MA5_SLOPE] = cds.get_echarts_data(code, start, DataSetField.MA5_SLOPE)
-    r[DataSetField.MA10_SLOPE] = cds.get_echarts_data(code, start, DataSetField.MA10_SLOPE)
-    r[DataSetField.VOLLINE] = cds.get_echarts_data(code, start, DataSetField.VOLLINE)
-    r[DataSetField.VOLUME_MA120] = cds.get_echarts_data(code, start, DataSetField.VOLUME_MA120)
-    r[DataSetField.TURNOVER] = cds.get_echarts_data(code, start, DataSetField.TURNOVER)
-    r[DataSetField.TD_VOTURNOVER_BUY] = cds.get_echarts_data(code, start, DataSetField.TD_VOTURNOVER_BUY)
-    r[DataSetField.TD_VOTURNOVER_SELL] = cds.get_echarts_data(code, start, DataSetField.TD_VOTURNOVER_SELL)
-    r["markpoint"] = trade_line_grid(code)
+    days = cds.current_day(start=start)
+    r[DataSetField.DATE] = days
+    r[DataSetField.KLINE] = cds.klines(code, days)
+
+    # r[DataSetField.DATE] = cds.get_echarts_data(code, start, DataSetField.DATE)
+    # r[DataSetField.KLINE] = cds.get_echarts_data(code, start, DataSetField.KLINE)
+    # r[DataSetField.MA5] = cds.get_echarts_data(code, start, DataSetField.MA5)
+    # r[DataSetField.EMA30] = cds.get_echarts_data(code, start, DataSetField.EMA30)
+    # r[DataSetField.EMA200] = cds.get_echarts_data(code, start, DataSetField.EMA200)
+    # r[DataSetField.MA60] = cds.get_echarts_data(code, start, DataSetField.MA60)
+    # r[DataSetField.MA250] = cds.get_echarts_data(code, start, DataSetField.MA250)
+
     return r
 
 
@@ -247,6 +208,7 @@ def insert_trade():
         new_tl.gridPrice = data["gridPrice"]
         new_tl.year = data["year"]
         new_tl.month = data["month"]
+        new_tl.strategy = data["strategy"]
 
         db.session.add(new_tl)
         db.session.commit()
@@ -283,11 +245,14 @@ def trade_line():
     :return:
     '''
     code = request.args["code"]
+    print(code)
     code = mapping.get_symbol(code)
     # 使用 cursor() 方法创建一个游标对象 cursor
     connection.ping()
     cursor = connection.cursor(cursor=DictCursor)
     cursor.execute(
+        f"SELECT id,date,name,price,num,realAmount,gridPrice FROM trade_line WHERE grid=1 AND code={code} AND type='买入' ORDER BY price")
+    print(
         f"SELECT id,date,name,price,num,realAmount,gridPrice FROM trade_line WHERE grid=1 AND code={code} AND type='买入' ORDER BY price")
     buy = cursor.fetchall()
     cursor.execute(
@@ -376,7 +341,7 @@ def trade_send_email():
         sell = sorted(grid_data["sell"], key=lambda x: x[1])
         for line in sell:
             text += str(round(line[0], 2)) + "," + str(round(line[1], 2)) + "\n"
-
+    # print(text)
     send_text("股票推荐", "网格交易", text)
     return "1"
 
@@ -391,7 +356,7 @@ def opendays():
     start = request.args["start"]
     end = request.args["end"]
 
-    return json.dumps(cds.get_days(start, end))
+    return json.dumps(cds.open_days(start, end))
 
 
 @app.route('/tradeline', methods=["get"])
@@ -409,49 +374,50 @@ def tradeline():
         data = json.load(f)
     path2 = r"E:\File\workspace\python\StockBacktest\data/logs/markpoint.json"
     with open(path2, "r", encoding="utf-8") as f:
-        markpoint=json.load(f)
+        markpoint = json.load(f)
 
-    days = cds.get_days(startDate, currentDate)
-    allDate=[]
-    allPrice=[]
-    allMP=[]
+    days = cds.open_days(startDate, currentDate)
+    allDate = []
+    allPrice = []
+    allMP = []
 
     for i in days:
         if i in data.keys():
             for j in data[i]:
-                allDate.append(i+" "+j[0])
+                allDate.append(i + " " + j[0])
                 allPrice.append(j[1])
             if i in markpoint.keys():
                 for mk in markpoint[i]:
                     allMP.append(translate_markpoint(mk))
 
-    singleDate=[]
-    singlePrice=[]
-    singleMP=[]
+    singleDate = []
+    singlePrice = []
+    singleMP = []
     if currentDate in data.keys():
         for j in data[currentDate]:
-            singleDate.append( j[0])
+            singleDate.append(j[0])
             singlePrice.append(j[1])
     if currentDate in markpoint.keys():
         for mk in markpoint[currentDate]:
-            singleMP.append(translate_markpoint(mk,use_time=True))
+            singleMP.append(translate_markpoint(mk, use_time=True))
 
-    return {"all":{"DATE":allDate,"PRICE":allPrice,"markpoint":allMP} ,
-            "single":{"DATE":singleDate,"PRICE":singlePrice,"markpoint":singleMP},
-            "next":cds.compute_date(currentDate) }
+    return {"all": {"DATE": allDate, "PRICE": allPrice, "markpoint": allMP},
+            "single": {"DATE": singleDate, "PRICE": singlePrice, "markpoint": singleMP},
+            "next": cds.compute_date(currentDate)}
 
-def translate_markpoint(mk,use_time=False):
+
+def translate_markpoint(mk, use_time=False):
     """
         将买卖记录转换成echarts的标点
     :param mk: 格式实例：["20220629", "10:19:22", 5.99, 2000, 0]
     :return:
     """
     if use_time:
-        x_axis =  str(mk[1])
+        x_axis = str(mk[1])
     else:
-       x_axis=str(mk[0]) + " " + str(mk[1])
+        x_axis = str(mk[0]) + " " + str(mk[1])
 
-    name = str(mk[2]) + " "+str(mk[3])
+    name = str(mk[2]) + " " + str(mk[3])
     if mk[4] == 0:
         # 买入 但未卖出
         return {
@@ -503,6 +469,67 @@ def translate_markpoint(mk,use_time=False):
                 "color": '#00da3c'
             }
         }
+
+
+@app.route('/update/calendar', methods=["get"])
+def calendar():
+    '''
+        更新交易日历
+    :return:
+    '''
+    end = datetime.datetime.now() + datetime.timedelta(days=30)
+    end = end.strftime("%Y%m%d")
+    downloader.update_calendar(end_date=end)
+    cds.update_date()
+    return cds.cal.last_date()
+
+
+@app.route('/update/codelist', methods=["get"])
+def codelist():
+    '''
+        更新股票列表
+    :return:
+    '''
+
+    downloader.update_list()
+    mapping.load_mapping()
+
+    return json.dumps([i.__dict__ for i in mapping.infos][:100])
+
+
+@app.route('/update/daily', methods=["get"])
+def daily():
+    """
+        更新股票日线数据
+    :return:
+    """
+    code = request.args["code"]
+    code = mapping.get_code(code)
+    downloader.update_daily(code)
+    cds.load(code)
+    result = []
+    data = cds.get_code(code)
+    for k in data.keys():
+        result.append(data[k].__dict__)
+    result = sorted(result, key=lambda x: x["trade_date"], reverse=True)
+    return json.dumps(result[:100])
+
+
+@app.route('/update/hs300elements', methods=["get"])
+def hs300elements():
+    """
+        更新沪深300成分股
+    :return:
+    """
+    downloader.update_hs300elements()
+    cds.load_hs300elements()
+
+    result = []
+    data = cds.hs300_elements
+    for k in data.keys():
+        result.append(data[k].__dict__)
+
+    return json.dumps(result)
 
 
 if __name__ == '__main__':

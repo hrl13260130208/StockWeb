@@ -3,9 +3,9 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("logger")
 
-from data.data_manager import CodeMapping
-from data.controller import Controller
-from data.executor import DownloadExecutor, UpdateExecutor
+from common.mapping import CodeMapping
+from tmp.controller import Controller
+from tmp.executor import DownloadExecutor, UpdateExecutor
 
 
 if __name__ == '__main__':

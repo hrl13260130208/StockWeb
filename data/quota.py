@@ -36,8 +36,8 @@ class Quota():
 
     def macd(self,data):
         #   macd
-        data.loc[:, DataSetField.DIF], data.loc[:,DataSetField.DEA], data.loc[:,DataSetField.MACDHIST] = talib.MACD(data.loc[:,DataSetField.TCLOSE], fastperiod=12,
-                                                                       slowperiod=26, signalperiod=9)
+        data.loc[:, DataSetField.DIF], data.loc[:,DataSetField.DEA], data.loc[:,DataSetField.MACDHIST] = \
+            talib.MACD(data.loc[:,DataSetField.TCLOSE], fastperiod=12,slowperiod=26, signalperiod=9)
         data.loc[:, "DIF_shift"] =  data.loc[:, DataSetField.DIF].shift(1)
         #   DIF 斜率
         DIF_S = []

@@ -23,6 +23,7 @@ class TradeLine(db.Model):
     gridPrice = db.Column(db.Float, comment="网格卖出价格")
     year = db.Column(db.String(255), comment="年份")
     month = db.Column(db.String(255), comment="月份")
+    strategy = db.Column(db.Integer, comment="策略")
 
 
 

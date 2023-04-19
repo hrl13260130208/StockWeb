@@ -12,11 +12,16 @@ from common.config import FileConfig
 class TradeCalendar():
 
     def __init__(self):
+        self.cal = None
+        self.load_cal()
+
+
+    def load_cal(self):
         if os.path.exists(FileConfig.CALENDAR_PATH):
             self.cal = pd.read_csv(FileConfig.CALENDAR_PATH)
             self.cal.loc[:, ["cal_date", "pretrade_date"]] = self.cal.loc[:, ["cal_date", "pretrade_date"]].astype(str)
-        else:
-            self.cal = None
+            self.cal=self.cal.iloc[::-1]
+            # print(self.cal)
 
     def calender_update(self):
         """
@@ -84,14 +89,6 @@ class TradeCalendar():
     def last_date(self):
         return self.cal.loc[:,"cal_date"].values[-1]
 
-
-
-
-
-
-if __name__ == '__main__':
-    t=TradeCalendar()
-    print(t.last_date())
 
 
 

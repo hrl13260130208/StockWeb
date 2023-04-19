@@ -28,7 +28,7 @@ def send(text,subject):
 def send_text(header,subject,text):
     logger.info("发送邮件...")
     message = MIMEText(text, 'plain', 'utf-8')
-    message['From'] = Header("python", 'utf-8')
+    message['From'] = sender
     message['To'] = Header(header, 'utf-8')
 
     message['Subject'] = Header(subject, 'utf-8')
@@ -58,5 +58,6 @@ def generate_signal_text(date,buy_codes,sell_codes):
 
 if __name__ == '__main__':
     # generate_signal_text()
-    pass
+    text="aaaaaaaaaaa"
+    send_text("股票推荐", "网格交易", text)
 

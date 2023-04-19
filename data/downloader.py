@@ -1,86 +1,71 @@
-'''
-    下载任务接口
-'''
-
-from common.static import Static
 
 
-class Downloader():
+import os
+import logging
+import datetime
+import pandas as pd
+from shutil import copyfile
+from common.config import FileConfig,DailyFieldWY
+from data.quota import Quota
+from data.tushare_downloader import TradeCalendarDownloader,CodeListDownloader,DailyDownloader
+from data.eastmoney_downloader import HS300ElementDownloader
+
+
+class DataDownloader:
     def __init__(self):
-        self.update_list = []
-        self.name = "Downloader"
+        # 交易日历
+        self.calendar=TradeCalendarDownloader()
+        # 股票列表
+        self.code_list=CodeListDownloader()
+        # 日线数据
+        self.daily=DailyDownloader()
+        # 沪深300成分股
+        self.hs300elements=HS300ElementDownloader()
+        # 指标
+        self.quota= QuotaUpdater()
 
-    def register(self, data):
-        """
-            注册需要在下载完数据后，立马更新的任务
+    def update_calendar(self,end_date):
+        self.calendar.download(end_date,save_path=FileConfig.CALENDAR_PATH)
 
-        :param data: 描述更新任务的数据，数据类型为字典，格式如下{"file":"utils.code_detail","fromlist":"utils",
-                        "class":"CodeMapping","class_args":["xx","xx"],"method":"update","method_args":["xx","xx"]}
-        :return:
-        """
-        self.update_list.append(data)
+    def update_list(self):
+        self.code_list.download("",save_path=FileConfig.CODEDETAIL_PATH)
 
-    def run(self):
-        pass
+    def update_daily(self,code):
+        path = os.path.join(FileConfig.CODEHISTORY_PATH, code[:code.rfind(".")] + ".csv")
+        self.daily.download(code,save_path=path)
+        self.quota.update(code[:code.rfind(".")])
 
-    def start(self):
-        self.run()
-        for data in self.update_list:
-            Static.UPDATE_TASKS.put(data)
+    def update_hs300elements(self):
+        file = os.path.join(FileConfig.CODEHS300ELEMENT_PATH,"hs300elements.csv")
+        filename = "hs300elements_"+  datetime.datetime.now().strftime("%Y%m%d") +".csv"
+        path = os.path.join(FileConfig.CODEHS300ELEMENT_PATH,filename)
+        copyfile(file,path)
+        self.hs300elements.download("",save_path=file)
 
 
-class TradeObserver():
+class QuotaUpdater():
+    def __init__(self):
+        self.logger = logging.getLogger("QuotaUpdater")
+        self.quota = Quota()
 
-    def get_data(self, codes):
-        """
-            获取实时买卖的详情数据
+    def update(self,code):
+        self.logger.debug(f"开始更新股票{code}指标...")
+        path = os.path.join(FileConfig.CODEHISTORY_PATH, code + ".csv")
+        data = None
+        try:
+            data = pd.read_csv(path)
+        except:
+            self.logger.error(f"读取日线数据出处！跳过该股票（{code}）！")
+            return
 
-        :param codes: 需要监控的股票列表
-        :return:    包含具体股票信息的字典
-        """
-        pass
+        if len(data) == 0:
+            return
+        data = data.iloc[::-1]
 
-    def parse_data(self, data):
-        """
-            解析数据，并将其转换为统一格式
-        :param text:
-        :return:
-        """
-        # d = {}
-        # text = text.strip()
-        # text = text[text.find("\"") + 1:-2]
-        #
-        # items = text.split(",")
-        # d["name"] = items[0]
-        # d["open"] = items[1]
-        # d["previous_close"] = items[2]
-        # d["current"] = items[3]
-        # d["high"] = items[4]
-        # d["low"] = items[5]
-        # d["buy_price"] = items[6]
-        # d["sell_price"] = items[7]
-        # d["deal_volume"] = items[8]
-        # d["deal_price"] = items[9]
-        # d["buy1_volume"] = items[10]
-        # d["buy1_price"] = items[11]
-        # d["buy2_volume"] = items[12]
-        # d["buy2_price"] = items[13]
-        # d["buy3_volume"] = items[14]
-        # d["buy3_price"] = items[15]
-        # d["buy4_volume"] = items[16]
-        # d["buy4_price"] = items[17]
-        # d["buy5_volume"] = items[18]
-        # d["buy5_price"] = items[19]
-        # d["sell1_volume"] = items[20]
-        # d["sell1_price"] = items[21]
-        # d["sell2_volume"] = items[22]
-        # d["sell2_price"] = items[23]
-        # d["sell3_volume"] = items[24]
-        # d["sell3_price"] = items[25]
-        # d["sell4_volume"] = items[26]
-        # d["sell4_price"] = items[27]
-        # d["sell5_volume"] = items[28]
-        # d["sell5_price"] = items[29]
-        # d["date"] = items[30]
-        # d["time"] = items[31]
-        # return d
+        try:
+            data = self.quota.quota(data)
+            file = os.path.join(FileConfig.CODEQUOTA_PATH, code + ".csv")
+            data.to_csv(file, index=False, encoding="utf-8")
+        except ValueError:
+            self.logger.info(f"股票{code}数据不足！")
+
