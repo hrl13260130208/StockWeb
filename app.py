@@ -3,7 +3,7 @@ import os
 import warnings
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("logger")
+logger = logging.getLogger("StockWeb")
 from flask import Flask
 from flask import request
 import json
@@ -25,19 +25,30 @@ from pymysql.cursors import DictCursor
 # 打开数据库连接
 connection = pymysql.connect(host='localhost',
                              user='root',
-                             password='root',
+                             password='Hrl387452!',
                              database='webstock')
-
-mapping = CodeMapping()
-cds = CodeDataSet(mapping)
-
-reader = easyocr.Reader(['ch_sim', 'en'])  # 只需要运行一次就可以将模型加载到内存中
 
 downloader = DataDownloader()
 
+
+def check_init():
+    # 检查股票日历
+    if not os.path.exists(FileConfig.CALENDAR_PATH):
+        downloader.update_calendar(end_date="20230504")
+    # 股票详情
+    if not os.path.exists(FileConfig.CODEDETAIL_PATH):
+        downloader.update_list()
+
+
+check_init()
+
+mapping = CodeMapping()
+cds = CodeDataSet(mapping)
+reader = easyocr.Reader(['ch_sim', 'en'])  # 只需要运行一次就可以将模型加载到内存中
+
 app = Flask(__name__, template_folder="static/html")
 # 连接数据库
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:root@localhost:3306/webstock'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:Hrl387452!@localhost:3306/webstock'
 # 设置是否跟踪数据库的修改情况，一般不跟踪
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 # 数据库操作时是否显示原始SQL语句，一般都是打开的，因为我们后台要日志
@@ -245,18 +256,15 @@ def trade_line():
     :return:
     '''
     code = request.args["code"]
-    print(code)
     code = mapping.get_symbol(code)
     # 使用 cursor() 方法创建一个游标对象 cursor
     connection.ping()
     cursor = connection.cursor(cursor=DictCursor)
-    cursor.execute(
-        f"SELECT id,date,name,price,num,realAmount,gridPrice FROM trade_line WHERE grid=1 AND code={code} AND type='买入' ORDER BY price")
-    print(
-        f"SELECT id,date,name,price,num,realAmount,gridPrice FROM trade_line WHERE grid=1 AND code={code} AND type='买入' ORDER BY price")
+    cursor.execute(f"SELECT id,date,name,price,num,realAmount,gridPrice FROM trade_line "
+                   f"WHERE grid=1 AND code={code} AND type='买入' AND strategy =1  ORDER BY price")
     buy = cursor.fetchall()
-    cursor.execute(
-        f"SELECT id,date,name,price,num,realAmount,gridPrice FROM trade_line WHERE grid=1 AND code={code} AND type='卖出' ORDER BY price")
+    cursor.execute(f"SELECT id,date,name,price,num,realAmount,gridPrice FROM trade_line "
+                   f"WHERE grid=1 AND code={code} AND type='卖出' AND strategy =1 ORDER BY price")
     sell = cursor.fetchall()
     return {"buy": buy, "sell": sell}
 
@@ -344,6 +352,111 @@ def trade_send_email():
     # print(text)
     send_text("股票推荐", "网格交易", text)
     return "1"
+
+
+@app.route('/trade/statistics', methods=["get"])
+def trade_statistics():
+    '''
+        统计每月交易的执行情况
+            分四种情况统计：买入（未卖出）、卖出（未买入）、配对交易、固定买入
+    :return:
+    '''
+
+    search_year = request.args["search_year"]
+    search_month = request.args["search_month"]
+
+    connection.ping()
+    cursor = connection.cursor(cursor=DictCursor)
+
+    #  买入
+    if "全年" == search_month:
+        buy_records = f"SELECT `code`,date,type,num,price,realAmount FROM trade_line WHERE grid=1 AND strategy =1 AND `year`={search_year} " \
+                      f"AND type='买入' ORDER BY `code`,date"
+    else:
+        buy_records = f"SELECT `code`,date,type,num,price,realAmount FROM trade_line WHERE grid=1 AND strategy =1 AND `year`={search_year} " \
+                      f"AND `month`={search_month} AND type='买入' ORDER BY `code`,date"
+    cursor.execute(buy_records)
+    buys = []
+    total_buys = 0
+    for record in cursor.fetchall():
+        buys.append(record)
+        total_buys += record["realAmount"]
+
+    #   卖出
+    if "全年" == search_month:
+        sell_records = f"SELECT `code`,date,type,num,price,realAmount FROM trade_line WHERE grid=1 AND strategy =1 AND `year`={search_year} " \
+                       f" AND type='卖出' ORDER BY `code`,date"
+    else:
+
+        sell_records = f"SELECT `code`,date,type,num,price,realAmount FROM trade_line WHERE grid=1 AND strategy =1 AND `year`={search_year} " \
+                       f"AND `month`={search_month} AND type='卖出' ORDER BY `code`,date"
+    cursor.execute(sell_records)
+    sells = []
+    total_sells = 0
+    for record in cursor.fetchall():
+        sells.append(record)
+        total_sells += record["realAmount"]
+
+    #   配对交易
+    if "全年" == search_month:
+        pair_records = f"SELECT tl.`code`,tl.id,tl.type,tl.date,tl.price,tl.realAmount,lt.id as lt_id,lt.type as lt_type," \
+                       f"lt.date as lt_date,lt.price as lt_price,lt.realAmount as lt_realAmount,abs(tl.num) as num, round(tl.realAmount + lt.realAmount,2 ) as profit " \
+                       f"FROM trade_line  as tl JOIN trade_line as lt ON tl.pair_id = lt.id WHERE tl.grid=0 AND " \
+                       f"tl.strategy =1 AND tl.`year`={search_year} "
+    else:
+
+        pair_records = f"SELECT tl.`code`,tl.id,tl.type,tl.date,tl.price,tl.realAmount,lt.id as lt_id,lt.type as lt_type," \
+                       f"lt.date as lt_date,lt.price as lt_price,lt.realAmount as lt_realAmount,abs(tl.num) as num, round(tl.realAmount + lt.realAmount,2 ) as profit " \
+                       f"FROM trade_line  as tl JOIN trade_line as lt ON tl.pair_id = lt.id WHERE tl.grid=0 AND " \
+                       f"tl.strategy =1 AND tl.`year`={search_year} AND tl.`month`={search_month}  "
+    cursor.execute(pair_records)
+    pairs = []
+    total_profits = 0
+    ids = set()
+    for record in cursor.fetchall():
+        if record["id"] not in ids and record["lt_id"] not in ids:
+            total_profits += record["lt_realAmount"] + record["realAmount"]
+            ids.add(record["id"])
+            ids.add(record["lt_id"])
+            pairs.append(record)
+
+    #   固定买入
+    if "全年" == search_month:
+        fix_records = f"SELECT `code`,date,type,num,price FROM trade_line WHERE strategy =2 AND `year`={search_year} "
+    else:
+        fix_records = f"SELECT `code`,date,type,num,price FROM trade_line WHERE strategy =2 AND `year`={search_year} AND `month`={search_month}  "
+    cursor.execute(fix_records)
+    fixs = []
+    for record in cursor.fetchall():
+        fixs.append(record)
+
+    return json.dumps(
+        {"buys": buys, "total_buys": round(total_buys, 2), "sells": sells, "total_sells": round(total_sells, 2),
+         "pairs": pairs, "fixs": fixs, "pair_num": len(pairs),
+         "total_profits": round(total_profits, 2)})
+
+
+@app.route('/trade/orderlists', methods=["get"])
+def trade_orderlists():
+    """
+        查询指定日期的交易数据
+    :return:
+    """
+
+    search_date = request.args["search_date"]
+
+    connection.ping()
+    cursor = connection.cursor(cursor=DictCursor)
+
+    search_sql = "select * FROM trade_line where date=" + search_date
+    cursor.execute(search_sql)
+    lists = []
+    for record in cursor.fetchall():
+        record["grid"] = record["grid"].hex()[-1:]
+        record["gridPrice"] = str(record["gridPrice"])
+        lists.append(record)
+    print(lists)
+    return json.dumps({"lists": lists})
 
 
 @app.route('/opendays', methods=["get"])

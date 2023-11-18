@@ -1,4 +1,3 @@
-
 """
     交易日历
 """
@@ -15,12 +14,11 @@ class TradeCalendar():
         self.cal = None
         self.load_cal()
 
-
     def load_cal(self):
         if os.path.exists(FileConfig.CALENDAR_PATH):
             self.cal = pd.read_csv(FileConfig.CALENDAR_PATH)
             self.cal.loc[:, ["cal_date", "pretrade_date"]] = self.cal.loc[:, ["cal_date", "pretrade_date"]].astype(str)
-            self.cal=self.cal.iloc[::-1]
+            self.cal = self.cal.iloc[::-1]
             # print(self.cal)
 
     def calender_update(self):
@@ -57,13 +55,12 @@ class TradeCalendar():
         else:
             raise ValueError("无法查询当前日期！")
 
-    def is_open(self,date):
+    def is_open(self, date):
         line = self.cal.loc[self.cal.loc[:, "cal_date"] == date, :]
         if len(line) == 1:
             return line.loc[:, "is_open"].values[0]
         else:
             raise ValueError("无法查询当前日期！")
-
 
     def current_week(self):
         """
@@ -71,13 +68,14 @@ class TradeCalendar():
         :return:
         """
         today = datetime.datetime.now()
-        start = today-datetime.timedelta(days=6)
+        start = today - datetime.timedelta(days=6)
         today = today.strftime("%Y%m%d")
         start = start.strftime("%Y%m%d")
 
-        return self.open_days(start,today)
+        return self.open_days(start, today)
 
-    def open_days(self,start,end):
+    def open_days(self, start, end):
+
         start_index = self.cal.loc[self.cal.loc[:, "cal_date"] == start, :].index
         end_index = self.cal.loc[self.cal.loc[:, "cal_date"] == end, :].index
         start_index = start_index.values[0]
@@ -87,9 +85,5 @@ class TradeCalendar():
         return [d for d in data.values]
 
     def last_date(self):
-        return self.cal.loc[:,"cal_date"].values[-1]
 
-
-
-
-
+        return self.cal.loc[:, "cal_date"].values[-1]

@@ -3,23 +3,23 @@
 
 class FileConfig():
     #   交易日历路径
-    CALENDAR_PATH=r"E:\data\webstock\calender.csv"
+    CALENDAR_PATH=r"C:\data\webstock\calender.csv"
     #   股票列表
-    CODEDETAIL_PATH = r"E:\data\webstock\code_detail.csv"
+    CODEDETAIL_PATH = r"C:\data\webstock\code_detail.csv"
     #   沪深300成分股
-    CODEHS300ELEMENT_PATH = r"E:\data\webstock\quota\hs300"
+    CODEHS300ELEMENT_PATH = r"C:\data\webstock\quota\hs300"
     #   沪深300历史数据
-    CODEHS300HISTORY_PATH = r"E:\data\webstock\quota\hs300\hs300.csv"
+    CODEHS300HISTORY_PATH = r"C:\data\webstock\quota\hs300\hs300.csv"
     #   股票历史数据
-    CODEHISTORY_PATH = r"E:\data\webstock\stock_daily"
+    CODEHISTORY_PATH = r"C:\data\webstock\stock_daily"
     #   股票指标
-    CODEQUOTA_PATH = r"E:\data\webstock\stock_quota"
+    CODEQUOTA_PATH = r"C:\data\webstock\stock_quota"
     #   股票交易详情
-    TRADEDETAIL_PATH = r"E:\data\webstock\trade_detail"
+    TRADEDETAIL_PATH = r"C:\data\webstock\trade_detail"
     #   dataset数据路径
-    DATASET_PATH = r"E:\data\webstock\dataset"
+    DATASET_PATH = r"C:\data\webstock\dataset"
     #   五档交易数据
-    TRADEAPPLY_PATH= r"E:\data\webstock\trade_apply\wy"
+    TRADEAPPLY_PATH= r"C:\data\webstock\trade_apply\wy"
     # TRADEAPPLY_PATH= r"/root/apply"
 
     #   股票代码映射表

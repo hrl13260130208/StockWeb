@@ -2,6 +2,7 @@ import os
 import logging
 import pandas as pd
 
+
 from common.beans import DailyInfo,Hs300ElementInfo
 from utils.trade_calendar import TradeCalendar
 from common.config import FileConfig
